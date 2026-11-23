@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=0">
+  <title>秒杀系统</title>
+  <!-- 引入样式 -->
+  <link rel="stylesheet" href="./css/element.css">
+
+  <link href="./css/shop-list.css" rel="stylesheet">
+  <link href="./css/main.css" rel="stylesheet">
+
+  <style type="text/css">
+
+  </style>
+</head>
+<body>
+<div id="app">
+  <div class="header">
+    <div class="header-back-btn" @click="goBack"><i class="el-icon-arrow-left"></i></div>
+    <div class="header-title">{{keyword ? '搜索：' + keyword : typeName}}</div>
+    <a class="header-search" href="/#search" aria-label="搜索商户">
+      <i class="el-icon-search"></i>
+    </a>
+  </div>
+  <div class="sort-bar" v-if="!keyword">
+    <div class="sort-item">
+      <el-dropdown trigger="click" @command="handleCommand">
+      <span class="el-dropdown-link">
+        {{typeName}}<i class="el-icon-arrow-down el-icon--right"></i>
+      </span>
+        <el-dropdown-menu slot="dropdown">
+          <el-dropdown-item v-for="t in types" :key="t.id" :command="t">
+            {{t.name}}
+          </el-dropdown-item>
+        </el-dropdown-menu>
+      </el-dropdown>
+    </div>
+    <button class="sort-item" type="button" :class="{active: !sortBy}" :aria-pressed="!sortBy" :disabled="loading" @click="sortAndQuery('')">
+      距离 <i class="el-icon-arrow-down el-icon--right"></i>
+    </button>
+    <button class="sort-item" type="button" :class="{active: sortBy === 'comments'}" :aria-pressed="sortBy === 'comments'" :disabled="loading" @click="sortAndQuery('comments')">
+      人气 <i class="el-icon-arrow-down el-icon--right"></i>
+    </button>
+    <button class="sort-item" type="button" :class="{active: sortBy === 'score'}" :aria-pressed="sortBy === 'score'" :disabled="loading" @click="sortAndQuery('score')">
+      评分 <i class="el-icon-arrow-down el-icon--right"></i>
+    </button>
+  </div>
+  <div class="shop-list" @scroll="onScroll">
+    <p class="shop-empty" v-if="!hasMore && !shops.length" role="status">{{keyword ? '未找到匹配的商户' : '此分类暂无示例商户'}}</p>
+    <a class="shop-box" v-for="s in shops" :key="s.id" :href="'/shop-detail.html?id=' + s.id">
+      <div class="shop-img"><img v-if="s.images" :src="s.images" alt=""></div>
+      <div class="shop-info">
+        <div class="shop-title shop-item">{{s.name}}</div>
+        <div class="shop-rate shop-item" >
+          <el-rate
+              disabled :value="s.score/10"
+              text-color="#F63"
+              show-score
+          ></el-rate>
+          <span>{{s.comments}}条</span>
+        </div>
+        <div class="shop-area shop-item">
+          <span>{{s.area}}</span>
+          <span v-if="s.distance != null">{{s.distance < 1000 ? s.distance.toFixed(1) + 'm' : (s.distance/1000).toFixed(1) + 'km'}}</span>
+        </div>
+        <div class="shop-avg shop-item">￥{{s.avgPrice}}/人</div>
+        <div class="shop-address shop-item">
+          <i class="el-icon-map-location"></i>
+          <span>{{s.address}}</span>
+        </div>
+      </div>
+    </a>
+    <button v-if="hasMore && shops.length" class="shop-more" type="button" :disabled="loading" @click="queryShops">
+      {{loading ? '加载中…' : '加载更多'}}
+    </button>
+  </div>
+</div>
+<script src="./js/vue.js"></script>
+<script src="./js/axios.min.js"></script>
+<!-- 引入组件库 -->
+<script src="./js/element.js"></script>
+<script src="./js/common.js"></script>
+<script>
+
+  const app = new Vue({
+    el: "#app",
+    data: {
+      types: [],
+      shops: [],
+      keyword: "",
+      typeId: "",
+      typeName: "",
+      sortBy: "",
+      current: 1,
+      loading: false,
+      hasMore: true
+    },
+    created() {
+      const query = new URLSearchParams(location.search);
+      this.keyword = (query.get("keyword") || "").trim();
+      this.typeId = query.get("type") || "1";
+      this.typeName = query.get("name") || "商户分类";
+      if (!this.keyword) this.queryTypes();
+      this.queryShops();
+    },
+    methods: {
+      queryTypes() {
+        axios.get("/shop-type/list")
+          .then(({data}) => {
+            this.types = data;
+          })
+          .catch(err => {
+            console.log(err);
+            this.$message.error(err)
+          })
+      },
+      queryShops() {
+        if (this.loading || !this.hasMore) return;
+        this.loading = true;
+        const {keyword, typeId, current, sortBy} = this;
+        const endpoint = keyword ? "/shop/of/name" : "/shop/of/type";
+        const params = keyword
+          ? {name: keyword, current}
+          : {typeId, current, sortBy, x: 120.149993, y: 30.334229};
+        axios.get(endpoint, {params})
+          .then(({data}) => {
+            const shops = data || [];
+            this.shops = this.shops.concat(shops.map(shop => ({...shop, images: (shop.images || "").split(",")[0]})));
+            this.hasMore = shops.length >= (keyword ? 10 : 5);
+            this.current++;
+          })
+          .catch(err => {
+            this.$message.error(err);
+          })
+          .finally(() => this.loading = false);
+      },
+      handleCommand(t) {
+        location.href = "/shop-list.html?" + new URLSearchParams({type: t.id, name: t.name});
+      },
+      sortAndQuery(sortBy) {
+        if (this.loading || (this.sortBy === sortBy && this.shops.length)) return;
+        this.sortBy = sortBy;
+        this.shops = [];
+        this.current = 1;
+        this.hasMore = true;
+        this.queryShops();
+      },
+      goBack() {
+        history.back();
+      },
+      onScroll(e) {
+        const {scrollTop, clientHeight, scrollHeight} = e.target;
+        if (scrollHeight - scrollTop - clientHeight <= 16) {
+          this.queryShops();
+        }
+      },
+    }
+  })
+</script>
+</body>
+</html>

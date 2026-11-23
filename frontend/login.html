@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=0">
+  <title>秒杀系统</title>
+  <!-- 引入样式 -->
+  <link rel="stylesheet" href="./css/element.css">
+  <link href="./css/main.css" rel="stylesheet">
+  <link href="./css/login.css" rel="stylesheet">
+
+  <style type="text/css">
+
+  </style>
+</head>
+<body>
+<div id="app">
+  <div class="login-container">
+    <div class="header">
+      <div class="header-back-btn" @click="goBack" ><i class="el-icon-arrow-left"></i></div>
+      <div class="header-title">手机号码快捷登录&nbsp;&nbsp;&nbsp;</div>
+    </div>
+    <div class="content">
+      <div class="login-form">
+        <div style="display: flex; justify-content: space-between">
+          <el-input style="width: 60%" placeholder="请输入手机号" v-model.trim="form.phone" type="tel" autocomplete="tel-national">
+          </el-input>
+          <el-button style="width: 38%" @click="sendCode" type="success" :disabled="disabled">{{codeBtnMsg}}</el-button>
+        </div>
+
+        <div style="height: 5px"></div>
+        <el-input placeholder="请输入 6 位数字验证码" v-model.trim="form.code" inputmode="numeric" maxlength="6" autocomplete="one-time-code">
+        </el-input>
+        <p class="login-code-hint">本地演示的验证码在后端日志里，有效期 2 分钟。</p>
+        <div style="text-align: center; color: #8c939d;margin: 5px 0">未注册的手机号码验证后自动创建账户</div>
+        <label class="login-consent">
+          <input type="checkbox" v-model="agreed">
+          <span>我确认使用本地演示系统。演示订单不会扣款。</span>
+        </label>
+        <el-button @click="login" style="width: 100%; background-color:#f63; color: #fff;">登录</el-button>
+        <div style="text-align: right; color:#333333; margin: 5px 0"><a href="/login2.html">密码登录</a></div>
+      </div>
+    </div>
+  </div>
+</div>
+<script src="./js/vue.js"></script>
+<script src="./js/axios.min.js"></script>
+<!-- 引入组件库 -->
+<script src="./js/element.js"></script>
+<script src="./js/common.js"></script>
+<script src="./js/footer.js"></script>
+<script>
+
+  const app = new Vue({
+    el: "#app",
+    data: {
+      agreed: false,
+      disabled: false, // 发送短信按钮
+      codeBtnMsg: "发送验证码", // 发送短信按钮提示
+      form: {phone: "", code: ""}
+    },
+    methods: {
+      login(){
+        if(!this.agreed){
+          this.$message.error("请先勾选本地演示确认框");
+          return
+        }
+        if(!this.form.phone || !/^\d{6}$/.test(this.form.code)){
+          this.$message.error("请填写手机号和 6 位数字验证码");
+          return
+        }
+        axios.post("/user/login", this.form)
+        .then(({data}) => {
+            if(data){
+              // 保存用户信息到session
+              sessionStorage.setItem("token", data);
+            }
+            const returnShop = new URLSearchParams(location.search).get("returnShop");
+            location.replace(/^[1-9]\d*$/.test(returnShop || "")
+              ? "/shop-detail.html?id=" + returnShop + "#vouchers"
+              : "/index.html");
+        })
+        .catch(err => this.$message.error(err))
+      },
+      goBack(){
+        history.back();
+      },
+      async sendCode(){
+        if (this.disabled) return;
+        if (!this.form.phone) {
+          this.$message.error("手机号不能为空");
+          return;
+        }
+        this.disabled = true;
+        try {
+          await axios.post("/user/code", null, {params: {phone: this.form.phone}});
+        } catch (err) {
+          this.disabled = false;
+          this.$message.error(err);
+          return;
+        }
+
+        this.$message.success("验证码已生成，请查看后端日志");
+        let seconds = 60;
+        this.codeBtnMsg = `${seconds} 秒后可重发`;
+        const taskId = setInterval(() => {
+          seconds--;
+          if (seconds > 0) {
+            this.codeBtnMsg = `${seconds} 秒后可重发`;
+          } else {
+            clearInterval(taskId);
+            this.codeBtnMsg = "发送验证码";
+            this.disabled = false;
+          }
+        }, 1000);
+      }
+    }
+  })
+</script>
+</body>
+</html>
